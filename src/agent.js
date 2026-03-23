@@ -1,4 +1,3 @@
-import { createInterface } from 'readline';
 import { getToolDefinitions, executeTool } from './tools/index.js';
 import {
   printToolCall, printToolResult, printToolSkipped, printTokens,
@@ -20,7 +19,6 @@ Princípios de operação:
 - Nunca peça permissão para executar tarefas que já foram solicitadas
 - Se precisar de informação que não tem, use web_search ou pergunte ao usuário`;
 
-// Tools that need user confirmation
 const CONFIRM_TOOLS = new Set(['bash', 'write_file', 'create_file']);
 
 const TOOL_LABELS = {
@@ -29,14 +27,27 @@ const TOOL_LABELS = {
   create_file: 'Criar arquivo',
 };
 
-function askConfirmation() {
+// Read a single keypress from stdin (no readline needed)
+function waitForKey() {
   return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    rl.question('', (answer) => {
-      rl.close();
-      const a = answer.trim().toLowerCase();
-      resolve(a === 's' || a === 'y' || a === 'sim' || a === 'yes' || a === '');
-    });
+    const wasRaw = process.stdin.isRaw;
+    if (process.stdin.setRawMode) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+
+    const onData = (key) => {
+      process.stdin.removeListener('data', onData);
+      if (process.stdin.setRawMode) {
+        process.stdin.setRawMode(wasRaw || false);
+      }
+      // Ctrl+C
+      if (key[0] === 3) { process.exit(0); }
+      const char = String(key).toLowerCase();
+      resolve(char);
+    };
+
+    process.stdin.on('data', onData);
   });
 }
 
@@ -80,7 +91,6 @@ export class Agent {
       let usage = {};
       let firstToken = true;
 
-      // Show spinner while waiting for first token
       startSpinner('Pensando');
 
       try {
@@ -119,7 +129,6 @@ export class Agent {
       const assistantMsg = this.provider.buildAssistantMessage(fullText, toolCalls);
       this.messages.push(assistantMsg);
 
-      // No tool calls → conversation complete
       if (stopReason !== 'tool_use' || toolCalls.length === 0) {
         if (!firstToken) endAssistantMessage();
         printTokens(this.totalUsage, this.sessionId);
@@ -145,7 +154,10 @@ export class Agent {
             : tc.input.path?.slice(0, 70);
 
           printConfirmBox(label, detail);
-          const approved = await askConfirmation();
+
+          // Wait for single keypress — S/Enter = yes, N/anything = no
+          const key = await waitForKey();
+          const approved = (key === 's' || key === 'y' || key === '\r' || key === '\n');
           printConfirmResult(approved);
 
           if (!approved) {
@@ -155,7 +167,6 @@ export class Agent {
           }
         }
 
-        // Execute
         startSpinner(`Executando ${tc.name}`);
         const result = await executeTool(tc.name, tc.input);
         stopSpinner();
@@ -170,8 +181,6 @@ export class Agent {
       } else {
         this.messages.push(resultMsg);
       }
-
-      // Loop continues — LLM called again with results
     }
 
     console.log(chalk.yellow('\n  ⚠ Limite de iterações atingido (25).'));

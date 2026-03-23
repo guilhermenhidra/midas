@@ -148,7 +148,7 @@ export function printConfirmBox(action, detail) {
     console.log(warn('  │ ') + dim(short));
   }
   console.log(warn('  │'));
-  process.stdout.write(warn('  │ ') + success.bold(' [S] Sim ') + dim(' │ ') + err.bold(' [N] Não ') + dim('  → '));
+  process.stdout.write(warn('  │ ') + success.bold(' S ') + dim('Sim') + dim('  │  ') + err.bold('N ') + dim('Não') + dim('  │  ') + dim.italic('Enter = Sim'));
 }
 
 export function printConfirmResult(accepted) {
