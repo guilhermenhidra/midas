@@ -1,0 +1,165 @@
+# ✦ MIDAS
+
+**Agente de desenvolvimento autônomo no terminal.** Um assistente de IA que lê, escreve, edita arquivos, executa comandos e pesquisa na web — tudo pelo terminal.
+
+Suporte a **Anthropic (Claude)**, **OpenRouter** (GPT-4o, Gemini, Llama, DeepSeek...) e **Groq** (inferência ultra-rápida).
+
+---
+
+## Instalação (3 comandos)
+
+**Requisitos:** [Node.js](https://nodejs.org/) 18+ instalado.
+
+```bash
+# 1. Clone o repositório
+git clone https://github.com/guilhermenhidra/midas.git
+
+# 2. Entre na pasta e instale
+cd midas && npm install
+
+# 3. Registre o comando global
+npm link
+```
+
+**Pronto!** Agora digite `midas` em qualquer terminal:
+
+```bash
+midas
+```
+
+---
+
+## Primeiro uso
+
+Ao abrir o Midas pela primeira vez, use `/connect` para configurar seu provider:
+
+```
+  midas> /connect
+
+  Conexões
+  ─────────────────────────────────────
+  ● Desconectado  anthropic     (sem API key)
+  ● Desconectado  openrouter    (sem API key)
+  ● Desconectado  groq          (sem API key)
+
+  Conectar a qual provider?
+  1. anthropic
+  2. openrouter
+  3. groq
+```
+
+Escolha o provider, cole sua API key e pronto. A key é salva **apenas localmente** em `~/.midas/config.json`.
+
+### Onde conseguir API keys
+
+| Provider | Link | Vantagem |
+|----------|------|----------|
+| **Anthropic** | https://console.anthropic.com/settings/keys | Claude (melhor qualidade) |
+| **OpenRouter** | https://openrouter.ai/keys | 100+ modelos, um só lugar |
+| **Groq** | https://console.groq.com/keys | Ultra rápido, plano free |
+
+---
+
+## Modos de uso
+
+### Chat interativo
+```bash
+midas
+```
+
+### Tarefa única (executa e sai)
+```bash
+midas "crie um servidor express com 3 rotas"
+```
+
+### Pipe (stdin)
+```bash
+cat app.js | midas "encontre bugs nesse código"
+```
+
+---
+
+## Comandos dentro do Midas
+
+| Comando | O que faz |
+|---------|-----------|
+| `/connect` | Conecta a um provider (Anthropic, OpenRouter, Groq) |
+| `/model` | Seleciona modelo interativamente com filtro |
+| `/model claude-sonnet-4-5` | Troca modelo direto |
+| `/status` | Mostra provider e modelo ativos |
+| `/new` | Nova sessão |
+| `/history` | Lista sessões anteriores |
+| `/load ID` | Carrega sessão salva |
+| `/compact` | Compacta histórico para economizar tokens |
+| `/tokens` | Mostra uso de tokens da sessão |
+| `/tools` | Lista ferramentas disponíveis |
+| `/clear` | Limpa histórico |
+| `/verbose` | Liga/desliga detalhes de tool calls |
+| `/help` | Lista todos os comandos |
+| `/exit` | Sai e salva sessão |
+
+---
+
+## Ferramentas do agente
+
+O Midas tem acesso a 11 ferramentas que usa autonomamente:
+
+- **bash** — Executa qualquer comando no terminal
+- **read_file** / **read_multiple_files** — Lê arquivos
+- **write_file** / **create_file** / **edit_file** — Escreve e edita arquivos
+- **list_dir** — Lista diretórios
+- **glob** — Busca arquivos por padrão (`**/*.js`)
+- **search_files** — Grep em arquivos (texto ou regex)
+- **web_search** — Pesquisa na web
+- **web_fetch** — Busca conteúdo de URLs
+
+---
+
+## Personalizar por projeto
+
+Crie um arquivo `MIDAS.md` na raiz do seu projeto:
+
+```markdown
+# Meu Projeto
+
+Stack: React + TypeScript + Tailwind
+Package manager: pnpm
+Testes: vitest
+Commits: conventional commits em português
+```
+
+O Midas lê automaticamente esse arquivo como contexto do projeto.
+
+---
+
+## Flags CLI
+
+```bash
+midas --provider openrouter     # Usa provider específico
+midas --model gpt-4o            # Usa modelo específico
+midas --no-tools                # Modo conversa sem ferramentas
+midas --verbose                 # Mostra detalhes de tool calls
+midas --new-session             # Força nova sessão
+midas --session abc123          # Carrega sessão específica
+midas --config                  # Configuração interativa
+```
+
+---
+
+## Atualizar
+
+```bash
+cd midas && git pull && npm install
+```
+
+---
+
+## Desinstalar
+
+```bash
+npm unlink -g midas-cli
+```
+
+---
+
+**MIT License** — Use, modifique e distribua livremente.
