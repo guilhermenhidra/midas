@@ -1,83 +1,204 @@
 import chalk from 'chalk';
 
-const LOGO = `
-  ${chalk.hex('#FFD700').bold('╔══════════════════════════════════════╗')}
-  ${chalk.hex('#FFD700').bold('║')}        ${chalk.hex('#FFD700').bold('███╗   ███╗██╗██████╗  █████╗ ███████╗')}
-  ${chalk.hex('#FFD700').bold('║')}        ${chalk.hex('#FFD700').bold('████╗ ████║██║██╔══██╗██╔══██╗██╔════╝')}
-  ${chalk.hex('#FFD700').bold('║')}        ${chalk.hex('#FFD700').bold('██╔████╔██║██║██║  ██║███████║███████╗')}
-  ${chalk.hex('#FFD700').bold('║')}        ${chalk.hex('#FFD700').bold('██║╚██╔╝██║██║██║  ██║██╔══██║╚════██║')}
-  ${chalk.hex('#FFD700').bold('║')}        ${chalk.hex('#FFD700').bold('██║ ╚═╝ ██║██║██████╔╝██║  ██║███████║')}
-  ${chalk.hex('#FFD700').bold('║')}        ${chalk.hex('#FFD700').bold('╚═╝     ╚═╝╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝')}
-  ${chalk.hex('#FFD700').bold('╚══════════════════════════════════════╝')}
-`;
+// ── Colors ──
+const gold = chalk.hex('#FFD700');
+const goldBold = gold.bold;
+const dim = chalk.gray;
+const dimBold = chalk.gray.bold;
+const accent = chalk.cyan;
+const accentBold = chalk.cyan.bold;
+const success = chalk.green;
+const warn = chalk.yellow;
+const err = chalk.red;
+const white = chalk.white;
+const whiteBold = chalk.white.bold;
+
+// ── Tool icons ──
+const TOOL_ICONS = {
+  bash: '  $',
+  read_file: '  ',
+  read_multiple_files: '  ',
+  write_file: '  ',
+  create_file: '  +',
+  edit_file: '  ~',
+  list_dir: '  ',
+  glob: '  ',
+  search_files: '  ',
+  web_search: '  ',
+  web_fetch: '  '
+};
+
+// ── Spinner ──
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+let spinnerInterval = null;
+let spinnerFrame = 0;
+
+export function startSpinner(text = 'Pensando') {
+  spinnerFrame = 0;
+  spinnerInterval = setInterval(() => {
+    const frame = gold(SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]);
+    process.stdout.write(`\r  ${frame} ${dim(text + '...')}  `);
+    spinnerFrame++;
+  }, 80);
+}
+
+export function stopSpinner() {
+  if (spinnerInterval) {
+    clearInterval(spinnerInterval);
+    spinnerInterval = null;
+    process.stdout.write('\r' + ' '.repeat(60) + '\r');
+  }
+}
+
+// ── Logo ──
+const LOGO = [
+  '  ███╗   ███╗██╗██████╗  █████╗ ███████╗',
+  '  ████╗ ████║██║██╔══██╗██╔══██╗██╔════╝',
+  '  ██╔████╔██║██║██║  ██║███████║███████╗',
+  '  ██║╚██╔╝██║██║██║  ██║██╔══██║╚════██║',
+  '  ██║ ╚═╝ ██║██║██████╔╝██║  ██║███████║',
+  '  ╚═╝     ╚═╝╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝',
+];
 
 export function printWelcome(providerName, modelName, connected, sessionId) {
   console.clear();
-  console.log(LOGO);
-  console.log(chalk.gray('  Agente de desenvolvimento autônomo no terminal'));
-  console.log(chalk.gray('  ─────────────────────────────────────────────'));
+  console.log('');
+  for (const line of LOGO) {
+    console.log(goldBold(line));
+  }
+  console.log('');
+  console.log(dim('  ─────────────────────────────────────────'));
 
   if (connected) {
-    const dot = chalk.green('●');
-    console.log(`  ${dot} ${chalk.cyan(providerName)} ${chalk.gray('→')} ${chalk.white.bold(modelName)}`);
+    console.log(`  ${success('●')} ${accentBold(providerName)} ${dim('→')} ${whiteBold(modelName)}`);
   } else {
-    console.log(`  ${chalk.red('●')} ${chalk.yellow('Nenhum provider conectado')} ${chalk.gray('— use')} ${chalk.cyan('/connect')}`);
+    console.log(`  ${err('●')} ${warn('Nenhum provider conectado')} ${dim('— digite')} ${accent('/connect')}`);
   }
 
-  console.log(chalk.gray(`  Sessão: ${sessionId?.slice(0, 8) || 'nova'}`));
+  console.log(dim(`  Sessão: ${sessionId?.slice(0, 8) || 'nova'} │ ${new Date().toLocaleDateString('pt-BR')}`));
+  console.log(dim('  ─────────────────────────────────────────'));
   console.log('');
-  console.log(chalk.gray('  Dica: ') + chalk.cyan('/help') + chalk.gray(' para comandos, ') + chalk.cyan('/connect') + chalk.gray(' para configurar provider'));
-  console.log(chalk.gray('  ─────────────────────────────────────────────\n'));
+  console.log(dim('  Dicas: ') + accent('/help') + dim(' comandos · ') + accent('/connect') + dim(' provider · ') + accent('/model') + dim(' trocar LLM'));
+  console.log('');
 }
 
+// ── Chat formatting ──
+
+export function printUserMessage(msg) {
+  console.log('');
+  console.log(goldBold('  ❯ ') + whiteBold(msg));
+  console.log('');
+}
+
+export function startAssistantMessage() {
+  // Called before streaming begins — print the left border start
+  process.stdout.write(dim('  │ '));
+}
+
+export function writeAssistantToken(token) {
+  // Handle newlines to keep the border
+  const replaced = token.replace(/\n/g, '\n' + dim('  │ '));
+  process.stdout.write(replaced);
+}
+
+export function endAssistantMessage() {
+  console.log('');
+}
+
+// ── Tool calls ──
+
 export function printToolCall(name, input) {
-  const summary = typeof input === 'string' ? input : JSON.stringify(input).slice(0, 120);
-  console.log(chalk.yellow(`\n[${name}] `) + chalk.gray(summary));
+  const icon = TOOL_ICONS[name] || '  ⚡';
+  const summary = typeof input === 'string' ? input : JSON.stringify(input).slice(0, 100);
+
+  console.log('');
+  console.log(dim('  ┌─') + warn.bold(` ${icon} ${name} `) + dim('─'.repeat(Math.max(0, 45 - name.length))));
+  console.log(dim('  │ ') + white(summary.slice(0, 90)));
 }
 
 export function printToolResult(result) {
-  const lines = String(result).split('\n');
-  const display = lines.slice(0, 30).join('\n');
-  console.log(chalk.gray('  ' + display.replace(/\n/g, '\n  ')));
-  if (lines.length > 30) {
-    console.log(chalk.gray(`  ... (${lines.length - 30} linhas omitidas)`));
+  const text = String(result);
+  const lines = text.split('\n');
+  const show = lines.slice(0, 20);
+
+  for (const line of show) {
+    console.log(dim('  │  ') + dim(line.slice(0, 120)));
   }
+  if (lines.length > 20) {
+    console.log(dim(`  │  ... (${lines.length - 20} linhas omitidas)`));
+  }
+  console.log(dim('  └─────────────────────────────────────────────'));
 }
 
+export function printToolSkipped() {
+  console.log(dim('  │  ') + dim.italic('(cancelado pelo usuário)'));
+  console.log(dim('  └─────────────────────────────────────────────'));
+}
+
+// ── Confirmation dialog ──
+
+export function printConfirmBox(action, detail) {
+  console.log('');
+  console.log(warn('  ┌──────────────────────────────────────────────'));
+  console.log(warn('  │ ') + warn.bold('⚠  Permissão necessária'));
+  console.log(warn('  │'));
+  console.log(warn('  │ ') + white(action));
+  if (detail) {
+    const short = detail.length > 70 ? detail.slice(0, 67) + '...' : detail;
+    console.log(warn('  │ ') + dim(short));
+  }
+  console.log(warn('  │'));
+  process.stdout.write(warn('  │ ') + success.bold(' [S] Sim ') + dim(' │ ') + err.bold(' [N] Não ') + dim('  → '));
+}
+
+export function printConfirmResult(accepted) {
+  if (accepted) {
+    console.log(success('  │ ✓ Permitido'));
+  } else {
+    console.log(err('  │ ✗ Negado'));
+  }
+  console.log(warn('  └──────────────────────────────────────────────'));
+}
+
+// ── Status, errors, system ──
+
 export function printError(msg) {
-  console.error(chalk.red('  ✗ ' + msg));
+  console.log(err('  ✗ ') + err(msg));
 }
 
 export function printSystem(msg) {
-  console.log(chalk.blue('  ' + msg));
+  console.log(accent('  ' + msg));
 }
 
 export function printSuccess(msg) {
-  console.log(chalk.green('  ✓ ' + msg));
+  console.log(success('  ✓ ') + success(msg));
 }
 
 export function printTokens(usage, sessionId) {
   if (!usage) return;
   const i = usage.input_tokens || 0;
   const o = usage.output_tokens || 0;
-  console.log(chalk.gray(`\n  (tokens: ${i.toLocaleString()} in / ${o.toLocaleString()} out${sessionId ? ' | sessão: ' + sessionId.slice(0, 8) : ''})`));
+  console.log('');
+  console.log(dim(`  ──── tokens: ${i.toLocaleString()} in · ${o.toLocaleString()} out${sessionId ? ' │ sessão: ' + sessionId.slice(0, 8) : ''} ────`));
 }
 
 export function printStatusBar(providerName, modelName, connected) {
-  const dot = connected ? chalk.green('●') : chalk.red('●');
+  const dot = connected ? success('●') : err('●');
   console.log('');
-  console.log(chalk.gray('  ┌──────────────────────────────────────────────────'));
-  console.log(chalk.gray('  │ ') + dot + chalk.gray(' Provider: ') + chalk.cyan.bold(providerName) + chalk.gray('  │  Modelo: ') + chalk.white.bold(modelName));
-  console.log(chalk.gray('  └──────────────────────────────────────────────────'));
+  console.log(dim('  ┌──────────────────────────────────────────────────'));
+  console.log(dim('  │ ') + dot + dim(' Provider: ') + accentBold(providerName) + dim('  ·  Modelo: ') + whiteBold(modelName));
+  console.log(dim('  └──────────────────────────────────────────────────'));
   console.log('');
 }
 
+// ── Prompt ──
+
 export function promptText(providerName, modelName) {
   if (!providerName || providerName === 'none') {
-    return chalk.hex('#FFD700').bold('  midas> ');
+    return goldBold('  ❯ ');
   }
-  const tag = chalk.gray(`[${providerName}/${shortModel(modelName)}]`);
-  return `  ${tag} ${chalk.hex('#FFD700').bold('midas>')} `;
+  const tag = dim(`${providerName}/${shortModel(modelName)}`);
+  return `  ${tag} ${goldBold('❯')} `;
 }
 
 function shortModel(model) {
@@ -88,27 +209,38 @@ function shortModel(model) {
   return name.length > 25 ? name.slice(0, 23) + '..' : name;
 }
 
+// ── Connection status ──
+
 export function printConnectionStatus(providers) {
   console.log('');
-  console.log(chalk.hex('#FFD700').bold('  Conexões'));
-  console.log(chalk.gray('  ─────────────────────────────────────'));
+  console.log(goldBold('  Conexões'));
+  console.log(dim('  ─────────────────────────────────────────'));
   for (const p of providers) {
-    const dot = p.connected ? chalk.green('● Conectado   ') : chalk.red('● Desconectado');
-    const key = p.hasKey ? chalk.gray(' (key: ****' + p.keyPreview + ')') : chalk.yellow(' (sem API key)');
-    console.log(`  ${dot}  ${chalk.cyan.bold(p.name.padEnd(12))}${key}`);
+    const dot = p.connected ? success('●') : (p.hasKey ? warn('●') : err('●'));
+    const status = p.connected ? success('Conectado   ') : (p.hasKey ? warn('Com key     ') : dim('Sem key     '));
+    const keyInfo = p.hasKey ? dim(' ····' + p.keyPreview) : '';
+    console.log(`  ${dot} ${status} ${accentBold(p.name.padEnd(12))}${keyInfo}`);
   }
-  console.log(chalk.gray('  ─────────────────────────────────────'));
+  console.log(dim('  ─────────────────────────────────────────'));
   console.log('');
 }
+
+// ── Model list ──
 
 export function printModelList(models, currentModel) {
   for (let i = 0; i < models.length; i++) {
     const m = models[i];
-    const num = chalk.gray(`  ${String(i + 1).padStart(2)}.`);
+    const num = dim(`  ${String(i + 1).padStart(2)}.`);
     const isCurrent = m.id === currentModel;
-    const name = isCurrent ? chalk.green.bold(m.id + ' ← atual') : chalk.white(m.id);
-    const provider = chalk.cyan(`[${m.provider}]`);
-    const desc = m.description ? chalk.gray(` — ${m.description}`) : '';
+    const name = isCurrent ? success.bold(`${m.id} ← atual`) : white(m.id);
+    const provider = accent(`[${m.provider}]`);
+    const desc = m.description ? dim(` — ${m.description}`) : '';
     console.log(`${num} ${provider} ${name}${desc}`);
   }
+}
+
+// ── Separator ──
+
+export function printSeparator() {
+  console.log(dim('\n  ─────────────────────────────────────────\n'));
 }

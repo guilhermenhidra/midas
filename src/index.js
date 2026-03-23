@@ -9,7 +9,7 @@ import { createProvider } from './providers/index.js';
 import { Agent } from './agent.js';
 import { generateSessionId, saveSession, loadSession, loadLatestSession, listSessions, compactMessages, trimMessages } from './memory.js';
 import { listToolNames } from './tools/index.js';
-import { printWelcome, printSystem, printError, printSuccess, printStatusBar, promptText, printTokens, printConnectionStatus, printModelList } from './ui.js';
+import { printWelcome, printSystem, printError, printSuccess, printStatusBar, promptText, printTokens, printConnectionStatus, printModelList, printUserMessage, printSeparator } from './ui.js';
 
 // Parse args
 const args = process.argv.slice(2);
@@ -551,9 +551,11 @@ rl.on('line', async (line) => {
     return;
   }
 
+  printUserMessage(input);
   const agent = createAgent();
   await agent.run(input);
   save(agent);
+  printSeparator();
   rl.prompt();
 });
 

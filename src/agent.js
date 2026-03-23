@@ -1,6 +1,11 @@
 import { createInterface } from 'readline';
 import { getToolDefinitions, executeTool } from './tools/index.js';
-import { printToolCall, printToolResult, printTokens } from './ui.js';
+import {
+  printToolCall, printToolResult, printToolSkipped, printTokens,
+  printConfirmBox, printConfirmResult,
+  startSpinner, stopSpinner,
+  startAssistantMessage, writeAssistantToken, endAssistantMessage
+} from './ui.js';
 import chalk from 'chalk';
 
 const SYSTEM_PROMPT = `Você é Midas, um agente de desenvolvimento autônomo e altamente capaz rodando diretamente no terminal do usuário. Você tem acesso completo ao sistema de arquivos e ao shell da máquina.
@@ -15,15 +20,22 @@ Princípios de operação:
 - Nunca peça permissão para executar tarefas que já foram solicitadas
 - Se precisar de informação que não tem, use web_search ou pergunte ao usuário`;
 
-// Tools that require user confirmation by default
+// Tools that need user confirmation
 const CONFIRM_TOOLS = new Set(['bash', 'write_file', 'create_file']);
 
-function askUserConfirmation(message) {
+const TOOL_LABELS = {
+  bash: 'Executar comando',
+  write_file: 'Escrever arquivo',
+  create_file: 'Criar arquivo',
+};
+
+function askConfirmation() {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(chalk.yellow(`  ⚠ ${message} `) + chalk.gray('(s/n): '), (answer) => {
+    rl.question('', (answer) => {
       rl.close();
-      resolve(answer.trim().toLowerCase() === 's' || answer.trim().toLowerCase() === 'y' || answer.trim() === '');
+      const a = answer.trim().toLowerCase();
+      resolve(a === 's' || a === 'y' || a === 'sim' || a === 'yes' || a === '');
     });
   });
 }
@@ -58,15 +70,18 @@ export class Agent {
     while (iterations < maxIterations) {
       iterations++;
 
-      // Warn every 10 iterations
       if (iterations > 1 && iterations % 10 === 1) {
-        console.log(chalk.yellow(`\n  ⚠ ${iterations - 1} iterações executadas. Continuando...`));
+        console.log(chalk.yellow(`\n  ⚠ ${iterations - 1} iterações. Continuando...`));
       }
 
       let fullText = '';
       let toolCalls = [];
       let stopReason = 'end_turn';
       let usage = {};
+      let firstToken = true;
+
+      // Show spinner while waiting for first token
+      startSpinner('Pensando');
 
       try {
         const stream = this.provider.stream(
@@ -78,16 +93,23 @@ export class Agent {
 
         for await (const chunk of stream) {
           if (chunk.type === 'text') {
-            process.stdout.write(chunk.text);
+            if (firstToken) {
+              stopSpinner();
+              startAssistantMessage();
+              firstToken = false;
+            }
+            writeAssistantToken(chunk.text);
           } else if (chunk.type === 'done') {
+            stopSpinner();
             fullText = chunk.text;
             toolCalls = chunk.toolCalls || [];
             stopReason = chunk.stopReason;
             usage = chunk.usage || {};
           }
         }
-      } catch (err) {
-        console.error(chalk.red(`\nErro do provider: ${err.message}`));
+      } catch (e) {
+        stopSpinner();
+        console.error(chalk.red(`\n  ✗ Erro do provider: ${e.message}`));
         return;
       }
 
@@ -97,35 +119,47 @@ export class Agent {
       const assistantMsg = this.provider.buildAssistantMessage(fullText, toolCalls);
       this.messages.push(assistantMsg);
 
+      // No tool calls → conversation complete
       if (stopReason !== 'tool_use' || toolCalls.length === 0) {
-        if (fullText) console.log();
+        if (!firstToken) endAssistantMessage();
         printTokens(this.totalUsage, this.sessionId);
         return;
       }
 
-      console.log();
+      if (!firstToken) endAssistantMessage();
 
       // Execute tool calls
       const toolResults = [];
       for (const tc of toolCalls) {
-        if (this.verbose) {
-          printToolCall(tc.name, tc.input);
-        } else {
-          printToolCall(tc.name, summarizeInput(tc.name, tc.input));
-        }
+        const summary = this.verbose
+          ? (typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input).slice(0, 100))
+          : summarizeInput(tc.name, tc.input);
 
-        // User confirmation for dangerous tools
+        printToolCall(tc.name, summary);
+
+        // Confirmation for dangerous tools
         if (!this.dangerouslyAllowAll && CONFIRM_TOOLS.has(tc.name)) {
-          const desc = tc.name === 'bash' ? `Executar: ${tc.input.command?.slice(0, 100)}` : `${tc.name}: ${(tc.input.path || '').slice(0, 80)}`;
-          const approved = await askUserConfirmation(desc);
+          const label = TOOL_LABELS[tc.name] || tc.name;
+          const detail = tc.name === 'bash'
+            ? tc.input.command?.slice(0, 70)
+            : tc.input.path?.slice(0, 70);
+
+          printConfirmBox(label, detail);
+          const approved = await askConfirmation();
+          printConfirmResult(approved);
+
           if (!approved) {
+            printToolSkipped();
             toolResults.push({ id: tc.id, name: tc.name, result: 'Cancelado pelo usuário.' });
-            console.log(chalk.gray('  (cancelado)'));
             continue;
           }
         }
 
+        // Execute
+        startSpinner(`Executando ${tc.name}`);
         const result = await executeTool(tc.name, tc.input);
+        stopSpinner();
+
         printToolResult(result);
         toolResults.push({ id: tc.id, name: tc.name, result });
       }
@@ -136,9 +170,11 @@ export class Agent {
       } else {
         this.messages.push(resultMsg);
       }
+
+      // Loop continues — LLM called again with results
     }
 
-    console.log(chalk.yellow('\n  ⚠ Limite de iterações atingido (25). Parando o loop.'));
+    console.log(chalk.yellow('\n  ⚠ Limite de iterações atingido (25).'));
   }
 }
 
