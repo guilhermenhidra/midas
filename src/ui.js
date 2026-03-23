@@ -61,7 +61,6 @@ const LOGO = [
 ];
 
 export function printWelcome(providerName, modelName, connected, sessionId) {
-  console.clear();
   console.log('');
   for (const line of LOGO) {
     console.log(goldBold(line));
