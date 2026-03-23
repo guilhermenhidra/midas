@@ -1,3 +1,22 @@
+// ── SSRF protection: block internal/private URLs ──
+function validateUrl(urlStr) {
+  let parsed;
+  try { parsed = new URL(urlStr); } catch { throw new Error('URL inválida'); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Apenas HTTP/HTTPS são permitidos');
+  }
+  const h = parsed.hostname.toLowerCase();
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '0.0.0.0' ||
+      h.startsWith('10.') || h.startsWith('192.168.') ||
+      h.startsWith('172.16.') || h.startsWith('172.17.') || h.startsWith('172.18.') ||
+      h.startsWith('172.19.') || h.startsWith('172.2') || h.startsWith('172.30.') || h.startsWith('172.31.') ||
+      h === '169.254.169.254' || h.endsWith('.internal') || h.endsWith('.local') ||
+      h.endsWith('.localhost')) {
+    throw new Error('Acesso a endereços internos/privados bloqueado');
+  }
+  return parsed.toString();
+}
+
 export const webSearchTool = {
   name: 'web_search',
   description: 'Pesquisa na web usando DuckDuckGo (com fallback para Playwright/Google). Retorna título, URL e snippet.',
@@ -13,15 +32,13 @@ export const webSearchTool = {
     try {
       const encoded = encodeURIComponent(query);
       const url = `https://api.duckduckgo.com/?q=${encoded}&format=json&no_redirect=1&no_html=1`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       const data = await res.json();
 
       const results = [];
-
       if (data.AbstractText) {
         results.push({ title: data.Heading || 'Resultado', url: data.AbstractURL || '', snippet: data.AbstractText });
       }
-
       if (data.RelatedTopics) {
         for (const topic of data.RelatedTopics.slice(0, 5)) {
           if (topic.Text && topic.FirstURL) {
@@ -29,13 +46,11 @@ export const webSearchTool = {
           }
         }
       }
-
       if (data.Results) {
         for (const r of data.Results.slice(0, 5)) {
           results.push({ title: r.Text || '', url: r.FirstURL || '', snippet: r.Text || '' });
         }
       }
-
       if (results.length > 0) {
         return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n\n');
       }
@@ -66,7 +81,6 @@ export const webSearchTool = {
       });
 
       await browser.close();
-
       if (results.length > 0) {
         return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n\n');
       }
@@ -87,10 +101,15 @@ export const webFetchTool = {
     required: ['url']
   },
   async execute({ url }) {
+    // Validate URL to prevent SSRF
+    let safeUrl;
+    try { safeUrl = validateUrl(url); } catch (err) { return `Erro: ${err.message}`; }
+
     try {
-      const res = await fetch(url, {
+      const res = await fetch(safeUrl, {
         headers: { 'User-Agent': 'Midas/1.0' },
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(15000),
+        redirect: 'follow'
       });
 
       const contentType = res.headers.get('content-type') || '';

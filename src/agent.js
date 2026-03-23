@@ -1,5 +1,7 @@
+import { createInterface } from 'readline';
 import { getToolDefinitions, executeTool } from './tools/index.js';
 import { printToolCall, printToolResult, printTokens } from './ui.js';
+import chalk from 'chalk';
 
 const SYSTEM_PROMPT = `Você é Midas, um agente de desenvolvimento autônomo e altamente capaz rodando diretamente no terminal do usuário. Você tem acesso completo ao sistema de arquivos e ao shell da máquina.
 
@@ -12,6 +14,19 @@ Princípios de operação:
 - Seja direto e técnico. Explique brevemente o que está fazendo antes de cada tool call
 - Nunca peça permissão para executar tarefas que já foram solicitadas
 - Se precisar de informação que não tem, use web_search ou pergunte ao usuário`;
+
+// Tools that require user confirmation by default
+const CONFIRM_TOOLS = new Set(['bash', 'write_file', 'create_file']);
+
+function askUserConfirmation(message) {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(chalk.yellow(`  ⚠ ${message} `) + chalk.gray('(s/n): '), (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase() === 's' || answer.trim().toLowerCase() === 'y' || answer.trim() === '');
+    });
+  });
+}
 
 export class Agent {
   constructor(provider, options = {}) {
@@ -28,7 +43,7 @@ export class Agent {
   getSystemPrompt() {
     let sys = SYSTEM_PROMPT;
     if (this.projectContext) {
-      sys += `\n\nContexto do projeto (do MIDAS.md/CLAUDE.md):\n${this.projectContext}`;
+      sys += `\n\nContexto do projeto (do MIDAS.md):\n${this.projectContext}`;
     }
     return sys;
   }
@@ -42,6 +57,11 @@ export class Agent {
 
     while (iterations < maxIterations) {
       iterations++;
+
+      // Warn every 10 iterations
+      if (iterations > 1 && iterations % 10 === 1) {
+        console.log(chalk.yellow(`\n  ⚠ ${iterations - 1} iterações executadas. Continuando...`));
+      }
 
       let fullText = '';
       let toolCalls = [];
@@ -67,26 +87,23 @@ export class Agent {
           }
         }
       } catch (err) {
-        console.error(`\nErro do provider: ${err.message}`);
+        console.error(chalk.red(`\nErro do provider: ${err.message}`));
         return;
       }
 
-      // Track usage
       this.totalUsage.input_tokens += usage.input_tokens || 0;
       this.totalUsage.output_tokens += usage.output_tokens || 0;
 
-      // Add assistant message to history
       const assistantMsg = this.provider.buildAssistantMessage(fullText, toolCalls);
       this.messages.push(assistantMsg);
 
-      // If no tool calls, we're done
       if (stopReason !== 'tool_use' || toolCalls.length === 0) {
-        if (fullText) console.log(); // newline after streaming
+        if (fullText) console.log();
         printTokens(this.totalUsage, this.sessionId);
         return;
       }
 
-      console.log(); // newline after any text before tools
+      console.log();
 
       // Execute tool calls
       const toolResults = [];
@@ -97,23 +114,31 @@ export class Agent {
           printToolCall(tc.name, summarizeInput(tc.name, tc.input));
         }
 
+        // User confirmation for dangerous tools
+        if (!this.dangerouslyAllowAll && CONFIRM_TOOLS.has(tc.name)) {
+          const desc = tc.name === 'bash' ? `Executar: ${tc.input.command?.slice(0, 100)}` : `${tc.name}: ${(tc.input.path || '').slice(0, 80)}`;
+          const approved = await askUserConfirmation(desc);
+          if (!approved) {
+            toolResults.push({ id: tc.id, name: tc.name, result: 'Cancelado pelo usuário.' });
+            console.log(chalk.gray('  (cancelado)'));
+            continue;
+          }
+        }
+
         const result = await executeTool(tc.name, tc.input);
         printToolResult(result);
         toolResults.push({ id: tc.id, name: tc.name, result });
       }
 
-      // Add tool results to messages
       const resultMsg = this.provider.buildToolResultMessage(toolResults);
       if (Array.isArray(resultMsg)) {
         this.messages.push(...resultMsg);
       } else {
         this.messages.push(resultMsg);
       }
-
-      // Loop continues - LLM will be called again
     }
 
-    console.log('\n⚠️  Limite de iterações atingido (25). Parando o loop.');
+    console.log(chalk.yellow('\n  ⚠ Limite de iterações atingido (25). Parando o loop.'));
   }
 }
 

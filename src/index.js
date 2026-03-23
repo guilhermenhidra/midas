@@ -4,7 +4,7 @@ import { createInterface } from 'readline';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
-import { loadConfig, saveConfig, getApiKey, getModel, interactiveConfig, getKnownModels, getAllKnownModels, testConnection, fetchOpenRouterModels, fetchGroqModels } from './config.js';
+import { loadConfig, saveConfig, getApiKey, removeApiKey, getModel, interactiveConfig, getKnownModels, getAllKnownModels, testConnection, fetchOpenRouterModels, fetchGroqModels, fetchGoogleModels, PROVIDERS } from './config.js';
 import { createProvider } from './providers/index.js';
 import { Agent } from './agent.js';
 import { generateSessionId, saveSession, loadSession, loadLatestSession, listSessions, compactMessages, trimMessages } from './memory.js';
@@ -39,10 +39,10 @@ Uso:
   cat arquivo | midas "prompt"       Modo pipe
 
 Flags:
-  --provider <nome>                  anthropic, openrouter ou groq
+  --provider <nome>                  anthropic, openrouter, groq ou google
   --model <modelo>                   Nome do modelo
   --no-tools                         Modo conversa sem tools
-  --dangerously-allow-all            Sem confirmações
+  --dangerously-allow-all            Sem confirmações de segurança
   --session <id>                     Carrega sessão específica
   --new-session                      Força nova sessão
   --verbose                          Mostra detalhes de tool calls
@@ -84,19 +84,13 @@ function initProvider() {
   }
 }
 
-// Init provider (don't exit if no key — user can /connect later)
-if (currentApiKey) {
-  initProvider();
-}
+if (currentApiKey) initProvider();
 
 // Load project context
 let projectContext = '';
-for (const name of ['MIDAS.md', 'CLAUDE.md']) {
-  const p = path.join(process.cwd(), name);
-  if (fs.existsSync(p)) {
-    projectContext = fs.readFileSync(p, 'utf-8');
-    break;
-  }
+const midasMdPath = path.join(process.cwd(), 'MIDAS.md');
+if (fs.existsSync(midasMdPath)) {
+  projectContext = fs.readFileSync(midasMdPath, 'utf-8');
 }
 
 // Session management
@@ -123,7 +117,7 @@ function createAgent() {
     messages: [...messages],
     verbose: flags.verbose || config.verbose,
     noTools: flags.noTools,
-    dangerouslyAllowAll: flags.dangerouslyAllowAll || config.dangerously_allow_all,
+    dangerouslyAllowAll: flags.dangerouslyAllowAll || false,
     sessionId,
     projectContext
   });
@@ -143,41 +137,74 @@ function getPromptString() {
 
 // ─── /connect handler ────────────────────────────────────────────
 async function handleConnect(arg, rl) {
-  const ask = (q) => new Promise(r => {
-    rl.question(q, (a) => r(a.trim()));
-  });
+  const ask = (q) => new Promise(r => rl.question(q, (a) => r(a.trim())));
 
-  // If a specific provider was given: /connect openrouter
-  if (arg && ['anthropic', 'openrouter', 'groq'].includes(arg)) {
+  // /connect remove <provider>
+  if (arg && arg.startsWith('remove')) {
+    const parts = arg.split(/\s+/);
+    const target = parts[1];
+    if (!target || !PROVIDERS.includes(target)) {
+      printError(`Uso: /connect remove <${PROVIDERS.join('|')}>`);
+      return;
+    }
+    removeApiKey(config, target);
+    config = loadConfig();
+    printSuccess(`API key removida para ${target}.`);
+    if (currentProvider === target) {
+      connected = false;
+      provider = null;
+      console.log(chalk.yellow(`  Provider ativo (${target}) desconectado.`));
+    }
+    return;
+  }
+
+  // /connect <provider>
+  if (arg && PROVIDERS.includes(arg)) {
     return await connectToProvider(arg, ask);
   }
 
-  // Show status of all providers and let user pick
-  console.log('');
-  const providers = ['anthropic', 'openrouter', 'groq'];
-  const statuses = [];
-  for (const p of providers) {
+  // Show status of all providers
+  const statuses = PROVIDERS.map(p => {
     const key = getApiKey(config, p);
-    statuses.push({
+    return {
       name: p,
       hasKey: !!key,
       keyPreview: key ? key.slice(-4) : '',
       connected: p === currentProvider && connected
-    });
-  }
+    };
+  });
   printConnectionStatus(statuses);
 
   console.log(chalk.blue('  Conectar a qual provider?'));
-  console.log(chalk.gray('  1. anthropic'));
-  console.log(chalk.gray('  2. openrouter'));
-  console.log(chalk.gray('  3. groq'));
+  PROVIDERS.forEach((p, i) => console.log(chalk.gray(`  ${i + 1}. ${p}`)));
+  console.log(chalk.gray(`  r. Remover uma API key`));
   console.log('');
 
-  const choice = await ask(chalk.green('  Escolha (1-3 ou nome): '));
-  const map = { '1': 'anthropic', '2': 'openrouter', '3': 'groq' };
-  const selected = map[choice] || choice;
+  const choice = await ask(chalk.green('  Escolha: '));
 
-  if (!['anthropic', 'openrouter', 'groq'].includes(selected)) {
+  if (choice.toLowerCase() === 'r') {
+    console.log('');
+    PROVIDERS.forEach((p, i) => {
+      const key = getApiKey(config, p);
+      console.log(chalk.gray(`  ${i + 1}. ${p} ${key ? '(key: ****' + key.slice(-4) + ')' : '(sem key)'}`));
+    });
+    const rem = await ask(chalk.green('\n  Remover key de qual provider (1-' + PROVIDERS.length + '): '));
+    const idx = parseInt(rem) - 1;
+    if (idx >= 0 && idx < PROVIDERS.length) {
+      const target = PROVIDERS[idx];
+      removeApiKey(config, target);
+      config = loadConfig();
+      printSuccess(`API key removida para ${target}.`);
+      if (currentProvider === target) { connected = false; provider = null; }
+    }
+    return;
+  }
+
+  const numMap = {};
+  PROVIDERS.forEach((p, i) => numMap[String(i + 1)] = p);
+  const selected = numMap[choice] || choice;
+
+  if (!PROVIDERS.includes(selected)) {
     printError('Provider inválido.');
     return;
   }
@@ -194,14 +221,11 @@ async function connectToProvider(providerName, ask) {
     console.log(chalk.gray('  Nunca é enviada para nenhum lugar exceto a API do provider.\n'));
     key = await ask(chalk.green(`  API Key para ${providerName}: `));
     if (!key) { printError('Cancelado.'); return; }
-
-    // Save the key
     config.api_keys[providerName] = key;
     saveConfig(config);
-    printSuccess('API key salva localmente em ~/.midas/config.json');
+    printSuccess('API key salva localmente.');
   }
 
-  // Test connection
   console.log(chalk.gray(`\n  Testando conexão com ${providerName}...`));
   const result = await testConnection(providerName, key);
 
@@ -211,15 +235,12 @@ async function connectToProvider(providerName, ask) {
     currentModel = getModel(config, providerName);
     currentApiKey = key;
     initProvider();
-
-    // Update default provider in config
     config.provider = providerName;
     saveConfig(config);
-
     printStatusBar(currentProvider, currentModel, connected);
   } else {
     printError(`Falha na conexão: ${result.error}`);
-    const retry = await ask(chalk.yellow('  Deseja inserir outra API key? (s/n): '));
+    const retry = await ask(chalk.yellow('  Inserir outra API key? (s/n): '));
     if (retry.toLowerCase() === 's') {
       const newKey = await ask(chalk.green(`  Nova API Key para ${providerName}: `));
       if (newKey) {
@@ -245,11 +266,9 @@ async function connectToProvider(providerName, ask) {
 
 // ─── /model handler ──────────────────────────────────────────────
 async function handleModel(arg, rl) {
-  const ask = (q) => new Promise(r => {
-    rl.question(q, (a) => r(a.trim()));
-  });
+  const ask = (q) => new Promise(r => rl.question(q, (a) => r(a.trim())));
 
-  // Direct model set: /model claude-opus-4-5
+  // Direct set: /model gemini-2.5-pro
   if (arg && !['list', 'search', 'all'].includes(arg)) {
     currentModel = arg;
     if (provider) provider.model = arg;
@@ -260,25 +279,19 @@ async function handleModel(arg, rl) {
     return;
   }
 
-  // Show available models
   console.log('');
-  console.log(chalk.blue.bold('  Modelos disponíveis'));
+  console.log(chalk.hex('#FFD700').bold('  Modelos disponíveis'));
   console.log(chalk.gray(`  Provider ativo: ${chalk.cyan(currentProvider)} | Modelo atual: ${chalk.white.bold(currentModel)}`));
   console.log('');
 
-  // Choice: current provider models or all
   console.log(chalk.gray('  1. Modelos do provider atual (' + currentProvider + ')'));
   console.log(chalk.gray('  2. Todos os modelos (todos os providers)'));
-  if (currentProvider === 'openrouter') {
-    console.log(chalk.gray('  3. Buscar modelos online (OpenRouter API)'));
-  }
-  if (currentProvider === 'groq') {
-    console.log(chalk.gray('  3. Buscar modelos online (Groq API)'));
+  if (['openrouter', 'groq', 'google'].includes(currentProvider)) {
+    console.log(chalk.gray('  3. Buscar modelos online (API do provider)'));
   }
   console.log('');
 
   const choice = await ask(chalk.green('  Escolha: '));
-
   let models = [];
 
   if (choice === '1' || !choice) {
@@ -287,45 +300,30 @@ async function handleModel(arg, rl) {
     models = getAllKnownModels();
   } else if (choice === '3') {
     console.log(chalk.gray('\n  Buscando modelos online...'));
-    if (currentProvider === 'openrouter') {
-      const live = await fetchOpenRouterModels(currentApiKey);
-      if (live) {
-        models = live;
-        console.log(chalk.gray(`  ${live.length} modelos encontrados.`));
-      } else {
-        printError('Não foi possível buscar modelos. Usando catálogo local.');
-        models = getKnownModels(currentProvider).map(m => ({ ...m, provider: currentProvider }));
-      }
-    } else if (currentProvider === 'groq') {
-      const live = await fetchGroqModels(currentApiKey);
-      if (live) {
-        models = live;
-        console.log(chalk.gray(`  ${live.length} modelos encontrados.`));
-      } else {
-        printError('Não foi possível buscar modelos. Usando catálogo local.');
-        models = getKnownModels(currentProvider).map(m => ({ ...m, provider: currentProvider }));
-      }
+    let live = null;
+    if (currentProvider === 'openrouter') live = await fetchOpenRouterModels(currentApiKey);
+    else if (currentProvider === 'groq') live = await fetchGroqModels(currentApiKey);
+    else if (currentProvider === 'google') live = await fetchGoogleModels(currentApiKey);
+
+    if (live) {
+      models = live;
+      console.log(chalk.gray(`  ${live.length} modelos encontrados.`));
+    } else {
+      printError('Não foi possível buscar modelos. Usando catálogo local.');
+      models = getKnownModels(currentProvider).map(m => ({ ...m, provider: currentProvider }));
     }
   }
 
-  if (models.length === 0) {
-    printError('Nenhum modelo disponível.');
-    return;
-  }
+  if (models.length === 0) { printError('Nenhum modelo disponível.'); return; }
 
-  // Filter
   const filter = await ask(chalk.green('  Filtrar por nome (ou Enter para ver todos): '));
   if (filter) {
     const f = filter.toLowerCase();
     models = models.filter(m => m.id.toLowerCase().includes(f) || (m.description || '').toLowerCase().includes(f));
   }
 
-  if (models.length === 0) {
-    printError('Nenhum modelo corresponde ao filtro.');
-    return;
-  }
+  if (models.length === 0) { printError('Nenhum modelo corresponde ao filtro.'); return; }
 
-  // Paginate if too many
   const pageSize = 15;
   let page = 0;
   const totalPages = Math.ceil(models.length / pageSize);
@@ -334,7 +332,7 @@ async function handleModel(arg, rl) {
     const start = page * pageSize;
     const pageModels = models.slice(start, start + pageSize);
     console.log('');
-    console.log(chalk.gray(`  Mostrando ${start + 1}-${start + pageModels.length} de ${models.length}${totalPages > 1 ? ` (página ${page + 1}/${totalPages})` : ''}`));
+    console.log(chalk.gray(`  ${start + 1}-${start + pageModels.length} de ${models.length}${totalPages > 1 ? ` (pág ${page + 1}/${totalPages})` : ''}`));
     console.log('');
     printModelList(pageModels, currentModel);
     console.log('');
@@ -355,7 +353,6 @@ async function handleModel(arg, rl) {
       currentModel = selected.id;
       if (provider) provider.model = selected.id;
 
-      // If model is from a different provider, switch provider too
       if (selected.provider && selected.provider !== currentProvider) {
         const key = getApiKey(config, selected.provider);
         if (!key) {
@@ -393,7 +390,7 @@ if (!process.stdin.isTTY) {
 // Single task mode
 if (positional.length > 0) {
   if (!provider) {
-    printError(`API key não configurada para "${currentProvider}". Use: midas --config ou /connect no modo interativo.`);
+    printError(`API key não configurada para "${currentProvider}". Use: midas --config`);
     process.exit(1);
   }
   const task = positional.join(' ');
@@ -404,7 +401,6 @@ if (positional.length > 0) {
   process.exit(0);
 }
 
-// Pipe only mode
 if (pipedInput) {
   if (!provider) { printError('API key não configurada.'); process.exit(1); }
   const agent = createAgent();
@@ -428,7 +424,6 @@ rl.on('line', async (line) => {
   const input = line.trim();
   if (!input) { rl.prompt(); return; }
 
-  // Slash commands
   if (input.startsWith('/')) {
     const [cmd, ...rest] = input.split(' ');
     const arg = rest.join(' ').trim();
@@ -496,12 +491,12 @@ rl.on('line', async (line) => {
         break;
 
       case '/provider':
-        if (arg && ['anthropic', 'openrouter', 'groq'].includes(arg)) {
+        if (arg && PROVIDERS.includes(arg)) {
           await handleConnect(arg, rl);
           rl.setPrompt(getPromptString());
         } else {
           printSystem(`Provider atual: ${chalk.cyan.bold(currentProvider)}`);
-          printSystem('Use /connect para trocar de provider.');
+          printSystem('Use /connect para trocar.');
         }
         break;
 
@@ -524,20 +519,21 @@ rl.on('line', async (line) => {
 
       case '/help':
         console.log(`
-  ${chalk.cyan('/connect')}         Conecta a um provider (anthropic, openrouter, groq)
-  ${chalk.cyan('/model')}           Seleciona modelo interativamente (com filtro)
-  ${chalk.cyan('/model NOME')}      Troca modelo diretamente
-  ${chalk.cyan('/status')}          Mostra provider e modelo ativos
-  ${chalk.cyan('/clear')}           Limpa histórico da sessão
-  ${chalk.cyan('/new')}             Nova sessão
-  ${chalk.cyan('/history')}         Lista sessões recentes
-  ${chalk.cyan('/load ID')}         Carrega sessão
-  ${chalk.cyan('/compact')}         Resume mensagens antigas
-  ${chalk.cyan('/tokens')}          Mostra uso de tokens
-  ${chalk.cyan('/tools')}           Lista ferramentas disponíveis
-  ${chalk.cyan('/verbose')}         Toggle modo verbose
-  ${chalk.cyan('/help')}            Este menu
-  ${chalk.cyan('/exit')}            Sai e salva sessão
+  ${chalk.cyan('/connect')}                Conecta a um provider (anthropic, google, openrouter, groq)
+  ${chalk.cyan('/connect remove <p>')}     Remove API key de um provider
+  ${chalk.cyan('/model')}                  Seleciona modelo interativamente (com filtro)
+  ${chalk.cyan('/model NOME')}             Troca modelo diretamente
+  ${chalk.cyan('/status')}                 Mostra provider e modelo ativos
+  ${chalk.cyan('/clear')}                  Limpa histórico da sessão
+  ${chalk.cyan('/new')}                    Nova sessão
+  ${chalk.cyan('/history')}                Lista sessões recentes
+  ${chalk.cyan('/load ID')}                Carrega sessão
+  ${chalk.cyan('/compact')}                Resume mensagens antigas
+  ${chalk.cyan('/tokens')}                 Mostra uso de tokens
+  ${chalk.cyan('/tools')}                  Lista ferramentas disponíveis
+  ${chalk.cyan('/verbose')}                Toggle modo verbose
+  ${chalk.cyan('/help')}                   Este menu
+  ${chalk.cyan('/exit')}                   Sai e salva sessão
 `);
         break;
 
@@ -549,14 +545,12 @@ rl.on('line', async (line) => {
     return;
   }
 
-  // Check if provider is connected
   if (!provider) {
     printError('Nenhum provider conectado. Use /connect primeiro.');
     rl.prompt();
     return;
   }
 
-  // Normal message
   const agent = createAgent();
   await agent.run(input);
   save(agent);

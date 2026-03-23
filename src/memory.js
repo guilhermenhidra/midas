@@ -3,6 +3,12 @@ import path from 'path';
 import crypto from 'crypto';
 import { SESSIONS_DIR, ensureDirs } from './config.js';
 
+// Security: validate session IDs to prevent path traversal
+function validateSessionId(id) {
+  if (!/^[a-z0-9\-]+$/i.test(id)) throw new Error('ID de sessão inválido');
+  return id;
+}
+
 export function generateSessionId() {
   const ts = Date.now().toString(36);
   const rand = crypto.randomBytes(3).toString('hex');
@@ -11,6 +17,7 @@ export function generateSessionId() {
 
 export function saveSession(sessionId, messages, meta = {}) {
   ensureDirs();
+  validateSessionId(sessionId);
   const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
   const data = {
     id: sessionId,
@@ -21,10 +28,11 @@ export function saveSession(sessionId, messages, meta = {}) {
     usage: meta.usage || { input_tokens: 0, output_tokens: 0 },
     messages
   };
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
 export function loadSession(sessionId) {
+  try { validateSessionId(sessionId); } catch { return null; }
   const file = path.join(SESSIONS_DIR, `${sessionId}.json`);
   if (!fs.existsSync(file)) return null;
   try {

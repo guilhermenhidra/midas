@@ -2,6 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
 
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Simple ReDoS detector: flag patterns with nested quantifiers
+function isSafeRegex(pattern) {
+  // Block patterns like (a+)+, (a*)*b, (a|b+)+ etc.
+  if (/(\+|\*|\{)\s*\)(\+|\*|\?)|\(\?[^)]*(\+|\*)\)(\+|\*)/.test(pattern)) return false;
+  // Block excessive quantifiers
+  if ((pattern.match(/(\+|\*)/g) || []).length > 10) return false;
+  return true;
+}
+
 export const globTool = {
   name: 'glob',
   description: 'Busca arquivos por padrão glob. Ex: **/*.js, src/**/*.ts',
@@ -16,7 +29,7 @@ export const globTool = {
   async execute({ pattern, cwd }) {
     const base = cwd || process.cwd();
     try {
-      const files = await glob(pattern, { cwd: base, nodir: false, dot: false });
+      const files = await glob(pattern, { cwd: base, nodir: false, dot: false, ignore: ['**/node_modules/**'] });
       if (files.length === 0) return 'Nenhum arquivo encontrado.';
       return files.slice(0, 100).join('\n') + (files.length > 100 ? `\n... (${files.length - 100} mais)` : '');
     } catch (err) {
@@ -41,25 +54,40 @@ export const searchFilesTool = {
   async execute({ pattern, directory, file_extensions, case_sensitive }) {
     const dir = path.resolve(directory || process.cwd());
     const flags = case_sensitive ? 'g' : 'gi';
+
     let regex;
-    try { regex = new RegExp(pattern, flags); } catch { regex = new RegExp(escapeRegex(pattern), flags); }
+    try {
+      if (isSafeRegex(pattern)) {
+        regex = new RegExp(pattern, flags);
+      } else {
+        // Unsafe pattern — treat as literal
+        regex = new RegExp(escapeRegex(pattern), flags);
+      }
+    } catch {
+      regex = new RegExp(escapeRegex(pattern), flags);
+    }
 
     const results = [];
     const maxResults = 50;
 
-    function walk(d) {
-      if (results.length >= maxResults) return;
+    function walk(d, depth) {
+      if (results.length >= maxResults || depth > 8) return;
       let entries;
       try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
       for (const entry of entries) {
         if (results.length >= maxResults) break;
-        const full = path.join(d, entry.name);
         if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-        if (entry.isDirectory()) { walk(full); continue; }
+        const full = path.join(d, entry.name);
+        if (entry.isDirectory()) { walk(full, depth + 1); continue; }
         if (file_extensions && file_extensions.length > 0) {
           const ext = path.extname(entry.name);
           if (!file_extensions.includes(ext)) continue;
         }
+        // Skip large files
+        try {
+          const stat = fs.statSync(full);
+          if (stat.size > 1048576) continue; // skip > 1MB
+        } catch { continue; }
         try {
           const content = fs.readFileSync(full, 'utf-8');
           const lines = content.split('\n');
@@ -74,13 +102,9 @@ export const searchFilesTool = {
       }
     }
 
-    walk(dir);
+    walk(dir, 0);
     let output = results.join('\n');
     if (results.length >= maxResults) output += `\n\n⚠️  Limitado a ${maxResults} resultados. Refine a busca para ver mais.`;
     return output || 'Nenhum resultado encontrado.';
   }
 };
-
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}

@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 export const readFileTool = {
   name: 'read_file',
   description: 'Lê o conteúdo de um arquivo. Opcionalmente especifique start_line e end_line para leitura parcial.',
@@ -16,6 +18,8 @@ export const readFileTool = {
   async execute({ path: filePath, start_line, end_line }) {
     const resolved = path.resolve(filePath);
     if (!fs.existsSync(resolved)) return `Erro: arquivo não encontrado: ${resolved}`;
+    const stat = fs.statSync(resolved);
+    if (stat.size > MAX_FILE_SIZE) return `Erro: arquivo muito grande (${(stat.size / 1048576).toFixed(1)}MB). Limite: 10MB.`;
     const content = fs.readFileSync(resolved, 'utf-8');
     const lines = content.split('\n');
     const start = (start_line || 1) - 1;
@@ -37,11 +41,17 @@ export const readMultipleFilesTool = {
     required: ['paths']
   },
   async execute({ paths }) {
+    if (paths.length > 20) return 'Erro: máximo 20 arquivos por vez.';
     const results = [];
     for (const p of paths) {
       const resolved = path.resolve(p);
       if (!fs.existsSync(resolved)) {
         results.push(`═══ ${resolved} ═══\nErro: arquivo não encontrado`);
+        continue;
+      }
+      const stat = fs.statSync(resolved);
+      if (stat.size > MAX_FILE_SIZE) {
+        results.push(`═══ ${resolved} ═══\nErro: arquivo muito grande (${(stat.size / 1048576).toFixed(1)}MB)`);
         continue;
       }
       const content = fs.readFileSync(resolved, 'utf-8');
@@ -64,7 +74,8 @@ export const writeFileTool = {
     },
     required: ['path', 'content']
   },
-  async execute({ path: filePath, content }, options = {}) {
+  async execute({ path: filePath, content }) {
+    if (content.length > MAX_FILE_SIZE) return `Erro: conteúdo muito grande (${(content.length / 1048576).toFixed(1)}MB). Limite: 10MB.`;
     const resolved = path.resolve(filePath);
     fs.mkdirSync(path.dirname(resolved), { recursive: true });
     fs.writeFileSync(resolved, content);
@@ -114,6 +125,7 @@ export const createFileTool = {
     required: ['path', 'content']
   },
   async execute({ path: filePath, content }) {
+    if (content.length > MAX_FILE_SIZE) return `Erro: conteúdo muito grande. Limite: 10MB.`;
     const resolved = path.resolve(filePath);
     if (fs.existsSync(resolved)) return `Erro: arquivo já existe: ${resolved}. Use write_file para sobrescrever.`;
     fs.mkdirSync(path.dirname(resolved), { recursive: true });
@@ -140,12 +152,14 @@ export const listDirTool = {
 
     const results = [];
     const maxD = max_depth || 3;
+    const maxEntries = 500;
 
     function walk(dir, depth) {
-      if (depth > maxD) return;
+      if (depth > maxD || results.length >= maxEntries) return;
       let entries;
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
       for (const entry of entries) {
+        if (results.length >= maxEntries) break;
         const full = path.join(dir, entry.name);
         const rel = path.relative(resolved, full);
         if (entry.isDirectory()) {
@@ -154,7 +168,7 @@ export const listDirTool = {
         } else {
           try {
             const stat = fs.statSync(full);
-            const size = stat.size < 1024 ? `${stat.size}B` : stat.size < 1048576 ? `${(stat.size/1024).toFixed(1)}KB` : `${(stat.size/1048576).toFixed(1)}MB`;
+            const size = stat.size < 1024 ? `${stat.size}B` : stat.size < 1048576 ? `${(stat.size / 1024).toFixed(1)}KB` : `${(stat.size / 1048576).toFixed(1)}MB`;
             results.push(`[FILE] ${rel} (${size})`);
           } catch {
             results.push(`[FILE] ${rel}`);
@@ -164,6 +178,7 @@ export const listDirTool = {
     }
 
     walk(resolved, 0);
+    if (results.length >= maxEntries) results.push(`\n⚠️  Limitado a ${maxEntries} entradas.`);
     return results.length > 0 ? results.join('\n') : '(diretório vazio)';
   }
 };

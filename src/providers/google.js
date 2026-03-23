@@ -1,13 +1,14 @@
+// Google Gemini provider via OpenAI-compatible endpoint
 import OpenAI from 'openai';
 
-export class OpenRouterProvider {
-  constructor(apiKey, model = 'anthropic/claude-sonnet-4-5') {
+export class GoogleProvider {
+  constructor(apiKey, model = 'gemini-2.5-flash') {
     this.client = new OpenAI({
       apiKey,
-      baseURL: 'https://openrouter.ai/api/v1'
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai'
     });
     this.model = model;
-    this.name = 'openrouter';
+    this.name = 'google';
   }
 
   formatTools(tools) {
@@ -89,7 +90,7 @@ export class OpenRouterProvider {
   buildAssistantMessage(text, toolCalls) {
     const msg = { role: 'assistant', content: text || '' };
     if (toolCalls.length > 0) {
-      msg.tool_calls = toolCalls.map((tc, i) => ({
+      msg.tool_calls = toolCalls.map((tc) => ({
         id: tc.id,
         type: 'function',
         function: { name: tc.name, arguments: JSON.stringify(tc.input) }

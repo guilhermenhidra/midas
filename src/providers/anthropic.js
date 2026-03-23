@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 export class AnthropicProvider {
-  constructor(apiKey, model = 'claude-opus-4-5') {
+  constructor(apiKey, model = 'claude-sonnet-4-5') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     this.name = 'anthropic';
