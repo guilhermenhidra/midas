@@ -102,14 +102,8 @@ if (flags.session) {
   const s = loadSession(flags.session);
   if (s) { sessionId = s.id; messages = s.messages || []; sessionMeta = s; }
   else { printError(`Sessão não encontrada: ${flags.session}`); process.exit(1); }
-} else if (!flags.newSession) {
-  const latest = loadLatestSession();
-  if (latest && Date.now() - new Date(latest.updated).getTime() < 3600000) {
-    sessionId = latest.id;
-    messages = latest.messages || [];
-    sessionMeta = latest;
-  }
 }
+// Always start a fresh session unless --session was given
 if (!sessionId) sessionId = generateSessionId();
 
 function createAgent() {
