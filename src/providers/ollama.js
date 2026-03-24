@@ -1,8 +1,16 @@
-// Ollama provider — uses native Ollama API at /api/chat
+// Ollama provider — uses Ollama cloud API (ollama.com) or local server
 
 export class OllamaProvider {
   constructor(apiKey, model = 'qwen2.5-coder:3b') {
-    this.baseURL = (apiKey && apiKey !== 'ollama') ? apiKey.replace(/\/+$/, '') : 'http://localhost:11434';
+    this.apiKey = apiKey || '';
+    // If apiKey looks like a URL, use it as custom server; otherwise use ollama.com cloud
+    if (apiKey && (apiKey.startsWith('http://') || apiKey.startsWith('https://'))) {
+      this.baseURL = apiKey.replace(/\/+$/, '');
+      this.authHeader = null;
+    } else {
+      this.baseURL = 'https://ollama.com';
+      this.authHeader = apiKey ? `Bearer ${apiKey}` : null;
+    }
     this.model = model;
     this.name = 'ollama';
   }
@@ -36,9 +44,14 @@ export class OllamaProvider {
       body.tools = this.formatTools(tools);
     }
 
+    const headers = { 'Content-Type': 'application/json' };
+    if (this.authHeader) {
+      headers['Authorization'] = this.authHeader;
+    }
+
     const res = await fetch(`${this.baseURL}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body)
     });
 

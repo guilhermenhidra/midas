@@ -213,18 +213,24 @@ async function handleConnect(arg, rl) {
 async function connectToProvider(providerName, ask) {
   let key = getApiKey(config, providerName);
 
-  // Ollama doesn't need an API key — just needs server running
-  if (providerName === 'ollama') {
-    if (!key) key = 'ollama';
-    const customUrl = await ask(chalk.green('  URL do Ollama (Enter para http://localhost:11434): '));
-    if (customUrl) {
-      key = customUrl.replace(/\/+$/, ''); // strip trailing slash
-      config.api_keys.ollama = key;
-      saveConfig(config);
-    } else if (!config.api_keys.ollama) {
-      config.api_keys.ollama = 'ollama';
-      saveConfig(config);
+  if (providerName === 'ollama' && !key) {
+    console.log(chalk.yellow(`\n  Ollama — escolha o modo de conexão:`));
+    console.log(chalk.gray('  1. Cloud (ollama.com) — precisa de API key'));
+    console.log(chalk.gray('  2. Local (localhost:11434) — precisa de ollama serve rodando'));
+    console.log(chalk.gray('  3. URL customizada\n'));
+    const mode = await ask(chalk.green('  Escolha (1/2/3): '));
+    if (mode === '2') {
+      key = 'http://localhost:11434';
+    } else if (mode === '3') {
+      key = await ask(chalk.green('  URL do servidor Ollama: '));
+      if (!key) { printError('Cancelado.'); return; }
+    } else {
+      console.log(chalk.gray('  Gere sua key em: https://ollama.com/settings/keys\n'));
+      key = await ask(chalk.green('  API Key do Ollama: '));
+      if (!key) { printError('Cancelado.'); return; }
     }
+    config.api_keys.ollama = key;
+    saveConfig(config);
   } else if (!key) {
     console.log(chalk.yellow(`\n  Nenhuma API key configurada para ${providerName}.`));
     console.log(chalk.gray('  A key é salva apenas localmente em ~/.midas/config.json'));

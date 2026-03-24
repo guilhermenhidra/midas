@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
     openrouter: '',
     groq: '',
     google: '',
-    ollama: 'ollama'
+    ollama: ''
   },
   max_tokens: 8096,
   auto_save_sessions: true,
@@ -205,12 +205,18 @@ export async function testConnection(providerName, apiKey) {
         return { ok: false, error: `HTTP ${res.status}` };
       }
       case 'ollama': {
-        const ollamaUrl = apiKey && apiKey !== 'ollama' ? apiKey : 'http://localhost:11434';
-        const res = await fetch(`${ollamaUrl}/api/tags`, {
-          signal: AbortSignal.timeout(5000)
+        // If apiKey is a URL, it's a local/custom server
+        const isUrl = apiKey.startsWith('http://') || apiKey.startsWith('https://');
+        const baseUrl = isUrl ? apiKey.replace(/\/+$/, '') : 'https://ollama.com';
+        const headers = {};
+        if (!isUrl && apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+        const res = await fetch(`${baseUrl}/api/tags`, {
+          headers,
+          signal: AbortSignal.timeout(10000)
         });
         if (res.ok) return { ok: true };
-        return { ok: false, error: 'Ollama não está rodando. Inicie com: ollama serve' };
+        if (res.status === 401) return { ok: false, error: 'API key inválida. Gere em https://ollama.com/settings/keys' };
+        return { ok: false, error: `HTTP ${res.status}` };
       }
       default:
         return { ok: false, error: 'Provider desconhecido' };
@@ -263,13 +269,21 @@ export async function fetchGoogleModels(apiKey) {
 
 export async function fetchOllamaModels(apiKey) {
   try {
-    const ollamaUrl = apiKey && apiKey !== 'ollama' ? apiKey : 'http://localhost:11434';
-    const res = await fetch(`${ollamaUrl}/api/tags`, {
-      signal: AbortSignal.timeout(5000)
+    const isUrl = apiKey && (apiKey.startsWith('http://') || apiKey.startsWith('https://'));
+    const baseUrl = isUrl ? apiKey.replace(/\/+$/, '') : 'https://ollama.com';
+    const headers = {};
+    if (!isUrl && apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    const res = await fetch(`${baseUrl}/api/tags`, {
+      headers,
+      signal: AbortSignal.timeout(10000)
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.models?.map(m => ({ id: m.name, description: `${(m.size / 1e9).toFixed(1)}GB — ${m.details?.family || ''}`, provider: 'ollama' })) || null;
+    return data.models?.map(m => ({
+      id: m.name,
+      description: m.size ? `${(m.size / 1e9).toFixed(1)}GB — ${m.details?.family || ''}` : (m.details?.family || ''),
+      provider: 'ollama'
+    })) || null;
   } catch { return null; }
 }
 
