@@ -1,13 +1,8 @@
-// Ollama provider — uses OpenAI-compatible API at localhost:11434/v1
-import OpenAI from 'openai';
+// Ollama provider — uses native Ollama API at /api/chat
 
 export class OllamaProvider {
-  constructor(apiKey, model = 'llama3.1') {
-    const baseURL = apiKey && apiKey !== 'ollama' ? `${apiKey}/v1` : 'http://localhost:11434/v1';
-    this.client = new OpenAI({
-      apiKey: 'ollama',
-      baseURL
-    });
+  constructor(apiKey, model = 'qwen2.5-coder:3b') {
+    this.baseURL = (apiKey && apiKey !== 'ollama') ? apiKey.replace(/\/+$/, '') : 'http://localhost:11434';
     this.model = model;
     this.name = 'ollama';
   }
@@ -29,58 +24,73 @@ export class OllamaProvider {
       ...messages
     ];
 
-    const params = {
+    const body = {
       model: this.model,
-      max_tokens: maxTokens,
       messages: msgs,
-      stream: true
+      stream: true,
+      options: {
+        num_predict: maxTokens
+      }
     };
     if (tools && tools.length > 0) {
-      params.tools = this.formatTools(tools);
+      body.tools = this.formatTools(tools);
     }
 
-    const stream = await this.client.chat.completions.create(params);
+    const res = await fetch(`${this.baseURL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`${res.status} ${res.statusText}${errBody ? ': ' + errBody.slice(0, 200) : ''}`);
+    }
 
     let fullText = '';
     let toolCalls = [];
-    let toolCallMap = {};
     let usage = { input_tokens: 0, output_tokens: 0 };
 
-    for await (const chunk of stream) {
-      if (chunk.usage) {
-        usage.input_tokens = chunk.usage.prompt_tokens || 0;
-        usage.output_tokens = chunk.usage.completion_tokens || 0;
-      }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-      const delta = chunk.choices?.[0]?.delta;
-      if (!delta) continue;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      if (delta.content) {
-        fullText += delta.content;
-        yield { type: 'text', text: delta.content };
-      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-      if (delta.tool_calls) {
-        for (const tc of delta.tool_calls) {
-          const idx = tc.index;
-          if (!toolCallMap[idx]) {
-            toolCallMap[idx] = { id: tc.id || `call_${idx}`, name: '', arguments: '' };
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let chunk;
+        try { chunk = JSON.parse(line); } catch { continue; }
+
+        // Text content
+        if (chunk.message?.content) {
+          fullText += chunk.message.content;
+          yield { type: 'text', text: chunk.message.content };
+        }
+
+        // Tool calls
+        if (chunk.message?.tool_calls) {
+          for (const tc of chunk.message.tool_calls) {
+            toolCalls.push({
+              id: `call_${toolCalls.length}`,
+              name: tc.function?.name || '',
+              input: tc.function?.arguments || {}
+            });
           }
-          if (tc.function?.name) toolCallMap[idx].name = tc.function.name;
-          if (tc.function?.arguments) toolCallMap[idx].arguments += tc.function.arguments;
+        }
+
+        // Usage info (comes in final chunk where done=true)
+        if (chunk.done && chunk.prompt_eval_count != null) {
+          usage.input_tokens = chunk.prompt_eval_count || 0;
+          usage.output_tokens = chunk.eval_count || 0;
         }
       }
-
-      if (chunk.choices?.[0]?.finish_reason) {
-        break;
-      }
-    }
-
-    for (const idx of Object.keys(toolCallMap).sort((a, b) => a - b)) {
-      const tc = toolCallMap[idx];
-      let input = {};
-      try { input = JSON.parse(tc.arguments); } catch {}
-      toolCalls.push({ id: tc.id, name: tc.name, input });
     }
 
     const stopReason = toolCalls.length > 0 ? 'tool_use' : 'end_turn';

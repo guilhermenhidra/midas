@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
     openrouter: 'anthropic/claude-sonnet-4-5',
     groq: 'llama-3.3-70b-versatile',
     google: 'gemini-2.5-flash',
-    ollama: 'llama3.1'
+    ollama: 'qwen2.5-coder:3b'
   },
   api_keys: {
     anthropic: '',
