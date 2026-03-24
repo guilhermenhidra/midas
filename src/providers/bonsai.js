@@ -8,10 +8,11 @@ export class BonsaiProvider {
     // Bonsai uses ANTHROPIC_AUTH_TOKEN (Bearer) not x-api-key
     // The Anthropic SDK sends x-api-key by default, but Bonsai accepts it via authToken
     this.client = new Anthropic({
-      apiKey,
+      apiKey: 'dummy',
       baseURL: 'https://go.trybons.ai',
       defaultHeaders: {
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${apiKey}`,
+        'x-api-key': apiKey
       }
     });
     this.model = model;

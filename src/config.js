@@ -199,18 +199,26 @@ export async function testConnection(providerName, apiKey) {
         return { ok: false, error: `HTTP ${res.status}` };
       }
       case 'bonsai': {
+        // Try with both auth methods — Bonsai may accept either
         const res = await fetch('https://go.trybons.ai/v1/messages', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${apiKey}`,
+            'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
             'content-type': 'application/json'
           },
-          body: JSON.stringify({ model: 'claude-haiku-3-5-20241022', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
-          signal: AbortSignal.timeout(10000)
+          body: JSON.stringify({ model: 'claude-sonnet-4-5-20250514', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+          signal: AbortSignal.timeout(15000)
         });
         if (res.status === 401 || res.status === 403) return { ok: false, error: 'API key inválida' };
-        return { ok: true };
+        if (res.status === 404 || res.status === 400) {
+          // Model may not be available, but auth worked
+          const body = await res.text();
+          if (body.includes('model') || body.includes('not_found')) return { ok: true };
+        }
+        if (res.ok || res.status === 200 || res.status === 529) return { ok: true };
+        return { ok: false, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 100)}` };
       }
       default:
         return { ok: false, error: 'Provider desconhecido' };
