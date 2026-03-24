@@ -199,7 +199,6 @@ export async function testConnection(providerName, apiKey) {
         return { ok: false, error: `HTTP ${res.status}` };
       }
       case 'bonsai': {
-        // Try with both auth methods — Bonsai may accept either
         const res = await fetch('https://go.trybons.ai/v1/messages', {
           method: 'POST',
           headers: {
@@ -212,13 +211,14 @@ export async function testConnection(providerName, apiKey) {
           signal: AbortSignal.timeout(15000)
         });
         if (res.status === 401 || res.status === 403) return { ok: false, error: 'API key inválida' };
+        if (res.ok || res.status === 200) return { ok: true };
+        // Read body once for all other cases
+        const body = await res.text().catch(() => '');
         if (res.status === 404 || res.status === 400) {
-          // Model may not be available, but auth worked
-          const body = await res.text();
           if (body.includes('model') || body.includes('not_found')) return { ok: true };
         }
-        if (res.ok || res.status === 200 || res.status === 529) return { ok: true };
-        return { ok: false, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 100)}` };
+        if (res.status === 529) return { ok: true }; // overloaded but auth works
+        return { ok: false, error: `HTTP ${res.status}: ${body.slice(0, 100)}` };
       }
       default:
         return { ok: false, error: 'Provider desconhecido' };
