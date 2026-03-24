@@ -18,6 +18,7 @@ export class BonsaiProvider {
   }
 
   async *stream(messages, systemPrompt, tools, maxTokens = 8096) {
+    // Try Anthropic format first (system as param), fallback without it
     const params = {
       model: this.model,
       max_tokens: maxTokens,
@@ -29,7 +30,7 @@ export class BonsaiProvider {
       params.tools = this.formatTools(tools);
     }
 
-    const res = await fetch(`${this.baseURL}/v1/messages`, {
+    let res = await fetch(`${this.baseURL}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -39,6 +40,34 @@ export class BonsaiProvider {
       },
       body: JSON.stringify(params)
     });
+
+    // If 400, retry without system/tools (Bonsai may not support all Anthropic features)
+    if (res.status === 400) {
+      const minimalParams = {
+        model: this.model,
+        max_tokens: maxTokens,
+        messages,
+        stream: true
+      };
+      // Add system as first user message if present
+      if (systemPrompt) {
+        minimalParams.messages = [
+          { role: 'user', content: systemPrompt },
+          { role: 'assistant', content: 'Entendido.' },
+          ...messages
+        ];
+      }
+      res = await fetch(`${this.baseURL}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify(minimalParams)
+      });
+    }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
