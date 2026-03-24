@@ -1,7 +1,7 @@
 // Ollama provider — uses Ollama cloud API (ollama.com) or local server
 
 export class OllamaProvider {
-  constructor(apiKey, model = 'qwen2.5-coder:3b') {
+  constructor(apiKey, model = 'qwen3-coder:480b') {
     this.apiKey = apiKey || '';
     // If apiKey looks like a URL, use it as custom server; otherwise use ollama.com cloud
     if (apiKey && (apiKey.startsWith('http://') || apiKey.startsWith('https://'))) {

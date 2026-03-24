@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
     openrouter: 'anthropic/claude-sonnet-4-5',
     groq: 'llama-3.3-70b-versatile',
     google: 'gemini-2.5-flash',
-    ollama: 'qwen2.5-coder:3b'
+    ollama: 'qwen3-coder:480b'
   },
   api_keys: {
     anthropic: '',
@@ -73,15 +73,19 @@ const KNOWN_MODELS = {
     { id: 'gemini-1.5-flash', description: 'Gemini 1.5 Flash' },
   ],
   ollama: [
-    { id: 'llama3.1', description: 'Llama 3.1 8B — local' },
-    { id: 'llama3.2', description: 'Llama 3.2 3B — local, leve' },
-    { id: 'codellama', description: 'Code Llama — código' },
-    { id: 'mistral', description: 'Mistral 7B — local' },
-    { id: 'mixtral', description: 'Mixtral 8x7B — local' },
-    { id: 'deepseek-coder-v2', description: 'DeepSeek Coder V2 — código' },
-    { id: 'qwen2.5', description: 'Qwen 2.5 — local' },
-    { id: 'phi3', description: 'Phi 3 — Microsoft, leve' },
-    { id: 'gemma2', description: 'Gemma 2 — Google, local' },
+    { id: 'qwen3-coder:480b', description: 'Qwen 3 Coder 480B — código, cloud' },
+    { id: 'deepseek-v3.2', description: 'DeepSeek V3.2 671B — cloud' },
+    { id: 'deepseek-v3.1:671b', description: 'DeepSeek V3.1 671B — cloud' },
+    { id: 'kimi-k2.5', description: 'Kimi K2.5 — cloud' },
+    { id: 'minimax-m2.7', description: 'MiniMax M2.7 — cloud' },
+    { id: 'mistral-large-3:675b', description: 'Mistral Large 3 675B — cloud' },
+    { id: 'gpt-oss:120b', description: 'GPT-OSS 120B — cloud' },
+    { id: 'qwen3.5:397b', description: 'Qwen 3.5 397B — cloud' },
+    { id: 'nemotron-3-super', description: 'Nemotron 3 Super — NVIDIA, cloud' },
+    { id: 'glm-5', description: 'GLM-5 — cloud' },
+    { id: 'devstral-2:123b', description: 'Devstral 2 123B — código, cloud' },
+    { id: 'gemma3:27b', description: 'Gemma 3 27B — cloud' },
+    { id: 'qwen2.5-coder:3b', description: 'Qwen 2.5 Coder 3B — leve, local' },
   ]
 };
 
