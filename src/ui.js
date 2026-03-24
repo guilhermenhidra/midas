@@ -25,7 +25,9 @@ const TOOL_ICONS = {
   glob: '  ',
   search_files: '  ',
   web_search: '  ',
-  web_fetch: '  '
+  web_fetch: '  ',
+  api_call: '  ',
+  spawn_agent: '  '
 };
 
 // ── Spinner ──
@@ -177,8 +179,9 @@ export function printTokens(usage, sessionId) {
   if (!usage) return;
   const i = usage.input_tokens || 0;
   const o = usage.output_tokens || 0;
+  const total = i + o;
   console.log('');
-  console.log(dim(`  ──── tokens: ${i.toLocaleString()} in · ${o.toLocaleString()} out${sessionId ? ' │ sessão: ' + sessionId.slice(0, 8) : ''} ────`));
+  console.log(dim(`  ──── tokens: `) + accent(`${i.toLocaleString()}`) + dim(` in · `) + accent(`${o.toLocaleString()}`) + dim(` out · `) + whiteBold(`${total.toLocaleString()}`) + dim(` total`) + dim(`${sessionId ? ' │ sessão: ' + sessionId.slice(0, 8) : ''} ────`));
 }
 
 export function printStatusBar(providerName, modelName, connected) {

@@ -2,6 +2,8 @@ import { bashTool } from './bash.js';
 import { readFileTool, readMultipleFilesTool, writeFileTool, editFileTool, createFileTool, listDirTool } from './files.js';
 import { globTool, searchFilesTool } from './search.js';
 import { webSearchTool, webFetchTool } from './web.js';
+import { apiCallTool } from './api_call.js';
+import { spawnAgentTool } from '../agents.js';
 
 export const allTools = [
   bashTool,
@@ -14,7 +16,9 @@ export const allTools = [
   globTool,
   searchFilesTool,
   webSearchTool,
-  webFetchTool
+  webFetchTool,
+  apiCallTool,
+  spawnAgentTool
 ];
 
 const toolMap = new Map(allTools.map(t => [t.name, t]));

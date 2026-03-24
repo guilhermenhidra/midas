@@ -31,7 +31,8 @@ export class OpenRouterProvider {
       model: this.model,
       max_tokens: maxTokens,
       messages: msgs,
-      stream: true
+      stream: true,
+      stream_options: { include_usage: true }
     };
     if (tools && tools.length > 0) {
       params.tools = this.formatTools(tools);
@@ -42,8 +43,20 @@ export class OpenRouterProvider {
     let fullText = '';
     let toolCalls = [];
     let toolCallMap = {};
+    let usage = { input_tokens: 0, output_tokens: 0 };
 
     for await (const chunk of stream) {
+      // Extract usage from stream (OpenAI/OpenRouter include it in final chunk)
+      if (chunk.usage) {
+        usage.input_tokens = chunk.usage.prompt_tokens || 0;
+        usage.output_tokens = chunk.usage.completion_tokens || 0;
+      }
+      // OpenRouter also sends x_openrouter usage
+      if (chunk.x_openrouter?.usage) {
+        usage.input_tokens = chunk.x_openrouter.usage.prompt_tokens || usage.input_tokens;
+        usage.output_tokens = chunk.x_openrouter.usage.completion_tokens || usage.output_tokens;
+      }
+
       const delta = chunk.choices?.[0]?.delta;
       if (!delta) continue;
 
@@ -82,7 +95,7 @@ export class OpenRouterProvider {
       text: fullText,
       toolCalls,
       stopReason,
-      usage: { input_tokens: 0, output_tokens: 0 }
+      usage
     };
   }
 

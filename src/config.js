@@ -27,7 +27,14 @@ const DEFAULT_CONFIG = {
   },
   max_tokens: 8096,
   auto_save_sessions: true,
-  verbose: false
+  verbose: false,
+  api_whitelist: [],
+  api_endpoints: {},
+  api_server: {
+    port: 4141,
+    host: '127.0.0.1',
+    cors_origins: '*'
+  }
 };
 
 const KNOWN_MODELS = {

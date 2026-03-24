@@ -25,6 +25,8 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--session' && args[i + 1]) { flags.session = args[++i]; }
   else if (args[i] === '--new-session') { flags.newSession = true; }
   else if (args[i] === '--verbose') { flags.verbose = true; }
+  else if (args[i] === '--api') { flags.api = true; }
+  else if (args[i] === '--port' && args[i + 1]) { flags.port = parseInt(args[++i]); }
   else if (args[i] === '--help' || args[i] === '-h') { flags.help = true; }
   else if (!args[i].startsWith('--')) { positional.push(args[i]); }
 }
@@ -46,6 +48,8 @@ Flags:
   --session <id>                     Carrega sessão específica
   --new-session                      Força nova sessão
   --verbose                          Mostra detalhes de tool calls
+  --api                              Inicia servidor HTTP API
+  --port <porta>                     Porta do servidor API (default: 4141)
   --config                           Configuração interativa
   --help                             Mostra esta ajuda
 `);
@@ -401,6 +405,24 @@ if (pipedInput) {
   await agent.run(pipedInput);
   save(agent);
   process.exit(0);
+}
+
+// API server mode
+if (flags.api) {
+  const { MidasAPI } = await import('./api.js');
+  const apiConfig = config.api_server || {};
+  const api = new MidasAPI({
+    port: flags.port || apiConfig.port || 4141,
+    host: apiConfig.host || '127.0.0.1',
+    corsOrigins: apiConfig.cors_origins || '*',
+    provider: currentProvider,
+    model: currentModel
+  });
+  api.start();
+  // Keep process alive
+  process.on('SIGINT', () => { api.stop(); process.exit(0); });
+  // Don't fall through to REPL
+  await new Promise(() => {}); // block forever
 }
 
 // Interactive REPL mode
