@@ -7,7 +7,7 @@ const CONFIG_DIR = path.join(os.homedir(), '.midas');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const SESSIONS_DIR = path.join(CONFIG_DIR, 'sessions');
 
-const PROVIDERS = ['anthropic', 'openrouter', 'groq', 'google'];
+const PROVIDERS = ['anthropic', 'openrouter', 'groq', 'google', 'bonsai'];
 
 const DEFAULT_CONFIG = {
   provider: 'anthropic',
@@ -15,13 +15,15 @@ const DEFAULT_CONFIG = {
     anthropic: 'claude-sonnet-4-5',
     openrouter: 'anthropic/claude-sonnet-4-5',
     groq: 'llama-3.3-70b-versatile',
-    google: 'gemini-2.5-flash'
+    google: 'gemini-2.5-flash',
+    bonsai: 'claude-sonnet-4-5-20250514'
   },
   api_keys: {
     anthropic: '',
     openrouter: '',
     groq: '',
-    google: ''
+    google: '',
+    bonsai: ''
   },
   max_tokens: 8096,
   auto_save_sessions: true,
@@ -62,6 +64,11 @@ const KNOWN_MODELS = {
     { id: 'gemini-2.0-flash', description: 'Gemini 2.0 Flash' },
     { id: 'gemini-1.5-pro', description: 'Gemini 1.5 Pro — 1M context' },
     { id: 'gemini-1.5-flash', description: 'Gemini 1.5 Flash' },
+  ],
+  bonsai: [
+    { id: 'claude-sonnet-4-5-20250514', description: 'Claude Sonnet 4.5 via Bonsai' },
+    { id: 'claude-opus-4-5-20250414', description: 'Claude Opus 4.5 via Bonsai' },
+    { id: 'claude-haiku-3-5-20241022', description: 'Claude Haiku 3.5 via Bonsai' },
   ]
 };
 
@@ -113,7 +120,8 @@ export function getApiKey(config, provider) {
     anthropic: 'ANTHROPIC_API_KEY',
     openrouter: 'OPENROUTER_API_KEY',
     groq: 'GROQ_API_KEY',
-    google: 'GOOGLE_API_KEY'
+    google: 'GOOGLE_API_KEY',
+    bonsai: 'BONSAI_API_KEY'
   };
   return process.env[envMap[p]] || '';
 }
@@ -182,6 +190,20 @@ export async function testConnection(providerName, apiKey) {
         if (res.ok) return { ok: true };
         if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, error: 'API key inválida' };
         return { ok: false, error: `HTTP ${res.status}` };
+      }
+      case 'bonsai': {
+        const res = await fetch('https://go.trybons.ai/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({ model: 'claude-haiku-3-5-20241022', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (res.status === 401 || res.status === 403) return { ok: false, error: 'API key inválida' };
+        return { ok: true };
       }
       default:
         return { ok: false, error: 'Provider desconhecido' };

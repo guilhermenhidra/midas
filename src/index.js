@@ -39,7 +39,7 @@ Uso:
   cat arquivo | midas "prompt"       Modo pipe
 
 Flags:
-  --provider <nome>                  anthropic, openrouter, groq ou google
+  --provider <nome>                  anthropic, openrouter, groq, google ou bonsai
   --model <modelo>                   Nome do modelo
   --no-tools                         Modo conversa sem tools
   --dangerously-allow-all            Sem confirmações de segurança
@@ -513,7 +513,7 @@ rl.on('line', async (line) => {
 
       case '/help':
         console.log(`
-  ${chalk.cyan('/connect')}                Conecta a um provider (anthropic, google, openrouter, groq)
+  ${chalk.cyan('/connect')}                Conecta a um provider (anthropic, google, openrouter, groq, bonsai)
   ${chalk.cyan('/connect remove <p>')}     Remove API key de um provider
   ${chalk.cyan('/model')}                  Seleciona modelo interativamente (com filtro)
   ${chalk.cyan('/model NOME')}             Troca modelo diretamente
