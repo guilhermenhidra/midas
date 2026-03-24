@@ -7,7 +7,7 @@ const CONFIG_DIR = path.join(os.homedir(), '.midas');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const SESSIONS_DIR = path.join(CONFIG_DIR, 'sessions');
 
-const PROVIDERS = ['anthropic', 'openrouter', 'groq', 'google', 'bonsai'];
+const PROVIDERS = ['anthropic', 'openrouter', 'groq', 'google', 'ollama'];
 
 const DEFAULT_CONFIG = {
   provider: 'anthropic',
@@ -16,14 +16,14 @@ const DEFAULT_CONFIG = {
     openrouter: 'anthropic/claude-sonnet-4-5',
     groq: 'llama-3.3-70b-versatile',
     google: 'gemini-2.5-flash',
-    bonsai: 'bonsai'
+    ollama: 'llama3.1'
   },
   api_keys: {
     anthropic: '',
     openrouter: '',
     groq: '',
     google: '',
-    bonsai: ''
+    ollama: 'ollama'
   },
   max_tokens: 8096,
   auto_save_sessions: true,
@@ -72,8 +72,16 @@ const KNOWN_MODELS = {
     { id: 'gemini-1.5-pro', description: 'Gemini 1.5 Pro — 1M context' },
     { id: 'gemini-1.5-flash', description: 'Gemini 1.5 Flash' },
   ],
-  bonsai: [
-    { id: 'bonsai', description: 'Modelo padrão Bonsai' },
+  ollama: [
+    { id: 'llama3.1', description: 'Llama 3.1 8B — local' },
+    { id: 'llama3.2', description: 'Llama 3.2 3B — local, leve' },
+    { id: 'codellama', description: 'Code Llama — código' },
+    { id: 'mistral', description: 'Mistral 7B — local' },
+    { id: 'mixtral', description: 'Mixtral 8x7B — local' },
+    { id: 'deepseek-coder-v2', description: 'DeepSeek Coder V2 — código' },
+    { id: 'qwen2.5', description: 'Qwen 2.5 — local' },
+    { id: 'phi3', description: 'Phi 3 — Microsoft, leve' },
+    { id: 'gemma2', description: 'Gemma 2 — Google, local' },
   ]
 };
 
@@ -126,7 +134,7 @@ export function getApiKey(config, provider) {
     openrouter: 'OPENROUTER_API_KEY',
     groq: 'GROQ_API_KEY',
     google: 'GOOGLE_API_KEY',
-    bonsai: 'BONSAI_API_KEY'
+    ollama: 'OLLAMA_API_KEY'
   };
   return process.env[envMap[p]] || '';
 }
@@ -196,24 +204,13 @@ export async function testConnection(providerName, apiKey) {
         if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, error: 'API key inválida' };
         return { ok: false, error: `HTTP ${res.status}` };
       }
-      case 'bonsai': {
-        const res = await fetch('https://go.trybons.ai/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
-          },
-          body: JSON.stringify({ model: 'claude-haiku-3-5-20241022', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
-          signal: AbortSignal.timeout(15000)
+      case 'ollama': {
+        const ollamaUrl = apiKey && apiKey !== 'ollama' ? apiKey : 'http://localhost:11434';
+        const res = await fetch(`${ollamaUrl}/api/tags`, {
+          signal: AbortSignal.timeout(5000)
         });
-        if (res.status === 401 || res.status === 403) return { ok: false, error: 'API key inválida' };
-        if (res.ok || res.status === 200) return { ok: true };
-        // 400/404/529 = auth worked, just bad request/model/overload
-        if (res.status === 400 || res.status === 404 || res.status === 529) return { ok: true };
-        const body = await res.text().catch(() => '');
-        return { ok: false, error: `HTTP ${res.status}: ${body.slice(0, 100)}` };
+        if (res.ok) return { ok: true };
+        return { ok: false, error: 'Ollama não está rodando. Inicie com: ollama serve' };
       }
       default:
         return { ok: false, error: 'Provider desconhecido' };
@@ -261,6 +258,18 @@ export async function fetchGoogleModels(apiKey) {
       description: m.displayName || '',
       provider: 'google'
     })) || null;
+  } catch { return null; }
+}
+
+export async function fetchOllamaModels(apiKey) {
+  try {
+    const ollamaUrl = apiKey && apiKey !== 'ollama' ? apiKey : 'http://localhost:11434';
+    const res = await fetch(`${ollamaUrl}/api/tags`, {
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.models?.map(m => ({ id: m.name, description: `${(m.size / 1e9).toFixed(1)}GB — ${m.details?.family || ''}`, provider: 'ollama' })) || null;
   } catch { return null; }
 }
 

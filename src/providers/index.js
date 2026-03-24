@@ -2,7 +2,7 @@ import { AnthropicProvider } from './anthropic.js';
 import { OpenRouterProvider } from './openrouter.js';
 import { GroqProvider } from './groq.js';
 import { GoogleProvider } from './google.js';
-import { BonsaiProvider } from './bonsai.js';
+import { OllamaProvider } from './ollama.js';
 
 export function createProvider(name, apiKey, model) {
   switch (name) {
@@ -14,11 +14,11 @@ export function createProvider(name, apiKey, model) {
       return new GroqProvider(apiKey, model);
     case 'google':
       return new GoogleProvider(apiKey, model);
-    case 'bonsai':
-      return new BonsaiProvider(apiKey, model);
+    case 'ollama':
+      return new OllamaProvider(apiKey, model);
     default:
       throw new Error(`Provider desconhecido: ${name}`);
   }
 }
 
-export { AnthropicProvider, OpenRouterProvider, GroqProvider, GoogleProvider, BonsaiProvider };
+export { AnthropicProvider, OpenRouterProvider, GroqProvider, GoogleProvider, OllamaProvider };

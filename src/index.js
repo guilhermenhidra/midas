@@ -4,7 +4,7 @@ import { createInterface } from 'readline';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
-import { loadConfig, saveConfig, getApiKey, removeApiKey, getModel, interactiveConfig, getKnownModels, getAllKnownModels, testConnection, fetchOpenRouterModels, fetchGroqModels, fetchGoogleModels, PROVIDERS } from './config.js';
+import { loadConfig, saveConfig, getApiKey, removeApiKey, getModel, interactiveConfig, getKnownModels, getAllKnownModels, testConnection, fetchOpenRouterModels, fetchGroqModels, fetchGoogleModels, fetchOllamaModels, PROVIDERS } from './config.js';
 import { createProvider } from './providers/index.js';
 import { Agent } from './agent.js';
 import { generateSessionId, saveSession, loadSession, loadLatestSession, listSessions, compactMessages, trimMessages } from './memory.js';
@@ -213,7 +213,19 @@ async function handleConnect(arg, rl) {
 async function connectToProvider(providerName, ask) {
   let key = getApiKey(config, providerName);
 
-  if (!key) {
+  // Ollama doesn't need an API key — just needs server running
+  if (providerName === 'ollama') {
+    if (!key) key = 'ollama';
+    const customUrl = await ask(chalk.green('  URL do Ollama (Enter para http://localhost:11434): '));
+    if (customUrl) {
+      key = customUrl.replace(/\/+$/, ''); // strip trailing slash
+      config.api_keys.ollama = key;
+      saveConfig(config);
+    } else if (!config.api_keys.ollama) {
+      config.api_keys.ollama = 'ollama';
+      saveConfig(config);
+    }
+  } else if (!key) {
     console.log(chalk.yellow(`\n  Nenhuma API key configurada para ${providerName}.`));
     console.log(chalk.gray('  A key é salva apenas localmente em ~/.midas/config.json'));
     console.log(chalk.gray('  Nunca é enviada para nenhum lugar exceto a API do provider.\n'));
@@ -284,7 +296,7 @@ async function handleModel(arg, rl) {
 
   console.log(chalk.gray('  1. Modelos do provider atual (' + currentProvider + ')'));
   console.log(chalk.gray('  2. Todos os modelos (todos os providers)'));
-  if (['openrouter', 'groq', 'google'].includes(currentProvider)) {
+  if (['openrouter', 'groq', 'google', 'ollama'].includes(currentProvider)) {
     console.log(chalk.gray('  3. Buscar modelos online (API do provider)'));
   }
   console.log('');
@@ -302,6 +314,7 @@ async function handleModel(arg, rl) {
     if (currentProvider === 'openrouter') live = await fetchOpenRouterModels(currentApiKey);
     else if (currentProvider === 'groq') live = await fetchGroqModels(currentApiKey);
     else if (currentProvider === 'google') live = await fetchGoogleModels(currentApiKey);
+    else if (currentProvider === 'ollama') live = await fetchOllamaModels(currentApiKey);
 
     if (live) {
       models = live;
