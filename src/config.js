@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
     openrouter: 'anthropic/claude-sonnet-4-5',
     groq: 'llama-3.3-70b-versatile',
     google: 'gemini-2.5-flash',
-    bonsai: 'claude-sonnet-4-5-20250514'
+    bonsai: 'bonsai'
   },
   api_keys: {
     anthropic: '',
@@ -73,9 +73,7 @@ const KNOWN_MODELS = {
     { id: 'gemini-1.5-flash', description: 'Gemini 1.5 Flash' },
   ],
   bonsai: [
-    { id: 'claude-sonnet-4-5-20250514', description: 'Claude Sonnet 4.5 via Bonsai' },
-    { id: 'claude-opus-4-5-20250414', description: 'Claude Opus 4.5 via Bonsai' },
-    { id: 'claude-haiku-3-5-20241022', description: 'Claude Haiku 3.5 via Bonsai' },
+    { id: 'bonsai', description: 'Modelo padrão Bonsai' },
   ]
 };
 

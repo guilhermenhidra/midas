@@ -4,7 +4,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 export class BonsaiProvider {
-  constructor(apiKey, model = 'claude-sonnet-4-5-20250514') {
+  constructor(apiKey, model = 'bonsai') {
     // Bonsai uses ANTHROPIC_AUTH_TOKEN (Bearer) not x-api-key
     // The Anthropic SDK sends x-api-key by default, but Bonsai accepts it via authToken
     this.client = new Anthropic({
